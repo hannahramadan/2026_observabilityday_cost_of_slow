@@ -7,8 +7,12 @@ Demo app from the talk *"What's the Dollar Cost of Slow?": Answering Business Qu
 customers give up, and some open a support ticket. The customers and the slow day are simulated; the AI
 calls are real (OpenAI).
 
-```
-Rails app (OpenTelemetry Ruby SDK) --OTLP--> OpenTelemetry Collector --> Prometheus, Tempo, Loki --> Perses
+```text
+Rails app (OpenTelemetry Ruby SDK)
+  --OTLP-->
+    OpenTelemetry Collector -->
+      Prometheus, Tempo, Loki -->
+        Perses
 ```
 
 ## Where to look

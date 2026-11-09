@@ -1,0 +1,9 @@
+# Perses server configuration.
+database:
+  file:
+    folder: /perses/data      # dashboards created in the UI are stored here (lost on `down`)
+    extension: yaml
+
+provisioning:
+  folders:
+    - /etc/perses/provisioning  # everything in this folder is (re)loaded at startup

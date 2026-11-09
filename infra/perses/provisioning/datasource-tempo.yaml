@@ -1,0 +1,15 @@
+# Perses datasource for traces (Tempo). "Global" means every project can use it. The proxy block makes
+# the Perses SERVER call the backend by Docker service name, so your browser never needs to
+# reach it directly. (One resource per file: Perses ignores everything after a "---".)
+kind: GlobalDatasource
+metadata:
+  name: tempo
+spec:
+  default: true
+  plugin:
+    kind: TempoDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://tempo:3200

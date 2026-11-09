@@ -1,0 +1,55 @@
+# OpenTelemetry Collector configuration.
+#
+# A Collector config has four building blocks:
+#   receivers  - how data gets IN
+#   processors - what happens to it on the way through
+#   exporters  - where data goes OUT
+#   service.pipelines - the wiring: which receivers feed which processors and exporters,
+#                       separately for traces, metrics and logs.
+# A block only does something if a pipeline at the bottom mentions it.
+
+receivers:
+  otlp:                       # OTLP is OpenTelemetry's own wire format
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318   # the Rails app's exporters send here (host port 4318)
+
+processors:
+  batch: {}   # groups items into batches before exporting; cheaper than sending one at a time
+
+exporters:
+  otlp_grpc/tempo:                 # "otlp_grpc/tempo" = an OTLP exporter named "tempo"
+    endpoint: tempo:4317      # Tempo's OTLP/gRPC receiver, reached by Docker service name
+    tls:
+      insecure: true          # plain text inside the private Docker network (demo only)
+
+  prometheus:                 # NOT a push: this opens an HTTP page of current metric values
+    endpoint: 0.0.0.0:8889    # Prometheus scrapes this page (see prometheus.yml)
+    # Prometheus renames things on the way in: dots become underscores, units become
+    # suffixes (_seconds), counters get _total. That is why gen_ai.client.inference.duration
+    # is queried as gen_ai_client_inference_duration_seconds_*.
+    # Good to know: this exporter forgets a series 5 minutes after it last received an update
+    # (metric_expiration). A running app re-sends its totals every few seconds, so that only
+    # affects a process that has already exited (for example script/smoke_telemetry.rb).
+
+  otlp_http/loki:              # Loki accepts OTLP natively; the exporter appends /v1/logs
+    endpoint: http://loki:3100/otlp
+
+# NOTE: there are deliberately no "connectors" here. Counting tickets and summing wasted
+# tokens is done at query time by LogQL in Loki. The Ruby SDK also exports cumulative
+# metrics already, so no deltatocumulative processor is needed.
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/loki]

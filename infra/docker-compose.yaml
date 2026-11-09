@@ -1,0 +1,76 @@
+# The "observability backend" for the demo, all open source.
+#
+# How data flows:
+#
+#   Rails app (on your machine, not in Docker)
+#        | OTLP over HTTP, host port 4318 (the Collector's port 4318 inside Docker)
+#        v
+#   OpenTelemetry Collector  --traces-->  Tempo        (stores traces)
+#                            --metrics--> Prometheus   (stores metrics; it PULLS from the Collector)
+#                            --logs----->  Loki        (stores log events)
+#        and then Perses reads from all three to draw dashboards.
+#
+# Ports are bound to 127.0.0.1, so only your own machine can reach them.
+
+name: cost-of-slow-rails
+
+services:
+  # The Collector is the single place the app sends telemetry. The app only needs to know
+  # one address; the Collector decides where each signal goes. That keeps the app free of
+  # backend-specific configuration and lets you swap backends without touching Ruby code.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0   # "contrib" has the Loki-friendly exporters
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"  # OTLP/HTTP: where the Rails app sends traces, metrics and logs
+    depends_on: [tempo, loki]
+
+  # Tempo stores TRACES: one trace is the story of a single request (root span plus one
+  # span per step). The Collector forwards traces to it over OTLP/gRPC on port 4317 (inside
+  # the Docker network only). Port 3200 is Tempo's query API, used by Perses and by curl.
+  tempo:
+    image: grafana/tempo:2.10.8
+    command: ["-config.file=/etc/tempo.yaml"]
+    user: root   # lets Tempo write its local files without fiddling with volume permissions (demo only)
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "127.0.0.1:3200:3200"   # Tempo query API
+
+  # Prometheus stores METRICS. Unlike the others it PULLS: every few seconds it scrapes the
+  # Collector's metrics endpoint (port 8889, see prometheus.yml). Host port 9090 is its UI
+  # and query API (PromQL).
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"  # Prometheus UI and API
+    depends_on: [otel-collector]
+
+  # Loki stores LOGS. Our two business events (user_gave_up, ticket_opened) end up here and
+  # are counted with LogQL queries instead of Collector connectors. The Collector pushes
+  # logs to Loki's native OTLP endpoint (http://loki:3100/otlp). Port 3100 is the query API.
+  loki:
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+    ports:
+      - "127.0.0.1:3100:3100"   # Loki API
+
+  # Perses is the DASHBOARD tool. It stores no telemetry itself: it reads from Prometheus
+  # (metrics), Tempo (traces) and Loki (logs) and draws panels. Its datasources and the
+  # dashboard are "provisioned": plain YAML files in ./perses/provisioning that Perses loads
+  # at startup, so the dashboard is code you can review and version.
+  perses:
+    image: persesdev/perses:v0.54.0
+    command: ["--config=/etc/perses/config/config.yaml"]
+    volumes:
+      - ./perses/config.yaml:/etc/perses/config/config.yaml:ro
+      - ./perses/provisioning:/etc/perses/provisioning:ro
+    ports:
+      - "127.0.0.1:8080:8080"   # Perses UI
+    depends_on: [prometheus, tempo, loki]

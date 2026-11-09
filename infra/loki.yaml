@@ -1,0 +1,31 @@
+# Loki in its simplest form: one process, logs kept on local disk.
+auth_enabled: false                 # single tenant, no X-Scope-OrgID header needed
+
+server:
+  http_listen_port: 3100            # query API and the /otlp ingest endpoint
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory               # no separate key-value store needed for one process
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13                   # the current schema; v13 supports structured metadata
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  allow_structured_metadata: true   # OTLP log attributes (app_name.customer.id, ...) are stored as
+                                    # structured metadata, which LogQL can filter on

@@ -1,0 +1,7 @@
+# A Perses "project" is a folder that groups dashboards.
+kind: Project
+metadata:
+  name: cost-of-slow
+spec:
+  display:
+    name: Cost of Slow

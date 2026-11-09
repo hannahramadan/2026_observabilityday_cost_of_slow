@@ -1,0 +1,9 @@
+shared:
+  - title: Reset your password
+    body: Open Settings, choose Security, then select Reset password. A link is emailed to you.
+  - title: Invite a teammate
+    body: Open Settings, choose Members, then select Invite. Teammates get an email invitation.
+  - title: Export your data
+    body: Open Settings, choose Data, then select Export. A download link is emailed when ready.
+  - title: Change your plan
+    body: Open Settings, choose Billing, then select Change plan. Changes apply on the next invoice.

@@ -1,0 +1,8 @@
+/.env
+/.env.*
+!/.env.example
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+/config/*.key

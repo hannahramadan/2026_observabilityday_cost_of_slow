@@ -1,0 +1,41 @@
+# Waterfall for ONE trace. The overview dashboard links here (table rows and scatter dots), passing the
+# trace ID in the URL as ?var-selectedTrace=<id>. Perses reads that URL parameter when a dashboard
+# opens, which is why this is a separate dashboard rather than a panel on the overview.
+kind: Dashboard
+metadata:
+  name: trace-detail
+  project: cost-of-slow
+spec:
+  display:
+    name: Trace detail
+  duration: 1h
+  variables:
+    - kind: TextVariable
+      spec:
+        name: selectedTrace
+        display:
+          name: Trace ID
+        value: ""
+  panels:
+    traceWaterfall:
+      kind: Panel
+      spec:
+        display:
+          name: Trace waterfall
+        plugin:
+          kind: TracingGanttChart
+          spec: {}
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: TempoTraceQuery
+                spec:
+                  query: $selectedTrace
+  layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: "Which step was slow?"
+        items:
+          - { x: 0, y: 0, width: 24, height: 20, content: { $ref: "#/spec/panels/traceWaterfall" } }

@@ -1,0 +1,228 @@
+kind: Dashboard
+metadata:
+  name: cost-of-slow
+  project: cost-of-slow
+spec:
+  display:
+    name: What's the dollar cost of slow?
+  duration: 1h
+  refreshInterval: 10s
+  panels:
+    # ---- Row 1: Metrics - "How many answers were too slow?" ----
+    tooSlowCount:
+      kind: Panel
+      spec:
+        display:
+          name: Answers slower than 5s
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  # total answers minus answers that finished within the 5s bucket
+                  query: sum(gen_ai_client_inference_duration_seconds_count) - sum(gen_ai_client_inference_duration_seconds_bucket{le=~"5|5.0"})
+    tooSlowRate:
+      kind: Panel
+      spec:
+        display:
+          name: Slow answers per minute
+        plugin:
+          kind: TimeSeriesChart
+          spec: {}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: (sum(rate(gen_ai_client_inference_duration_seconds_count[1m])) - sum(rate(gen_ai_client_inference_duration_seconds_bucket{le=~"5|5.0"}[1m]))) * 60
+    answerDuration:
+      kind: Panel
+      spec:
+        display:
+          name: Answer time vs. the 5s limit
+          description: Latency percentiles per minute. p50 is a typical answer; p99 is the slowest 1 in 100. Any line above the red 5s threshold means those users waited longer than we tolerate.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            yAxis:
+              format:
+                unit: seconds
+            thresholds:
+              defaultColor: "#e5484d"
+              steps:
+                - value: 5
+                  name: 5s limit
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: histogram_quantile(0.5, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket[1m])))
+                  seriesNameFormat: p50 (typical)
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket[1m])))
+                  seriesNameFormat: p95
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: histogram_quantile(0.99, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket[1m])))
+                  seriesNameFormat: p99 (slowest 1 in 100)
+    tokenSpend:
+      kind: Panel
+      spec:
+        display:
+          name: Total tokens used (input + output)
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(gen_ai_client_inference_usage_input_tokens_total) + sum(gen_ai_client_inference_usage_output_tokens_total)
+    # ---- Row 2: Traces - "Who was affected, and which step was slow?" ----
+    traceScatter:
+      kind: Panel
+      spec:
+        display:
+          name: Traces by time and duration (click a dot to open it)
+        plugin:
+          kind: ScatterChart
+          spec:
+            link: "/projects/cost-of-slow/dashboards/trace-detail?var-selectedTrace=${traceId}"
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: TempoTraceQuery
+                spec:
+                  query: '{ resource.service.name = "ai-support-assistant" }'
+                  limit: 20
+    traces:
+      kind: Panel
+      spec:
+        display:
+          name: Recent traces (click one to open its waterfall)
+        plugin:
+          kind: TraceTable
+          spec:
+            links:
+              trace: "/projects/cost-of-slow/dashboards/trace-detail?var-selectedTrace=${traceId}"
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: TempoTraceQuery
+                spec:
+                  query: '{ resource.service.name = "ai-support-assistant" }'
+                  limit: 20
+    slowEnterpriseTraces:
+      kind: Panel
+      spec:
+        display:
+          name: Slow enterprise traces (over 5s, click one to open its waterfall)
+        plugin:
+          kind: TraceTable
+          spec:
+            links:
+              trace: "/projects/cost-of-slow/dashboards/trace-detail?var-selectedTrace=${traceId}"
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: TempoTraceQuery
+                spec:
+                  query: '{ resource.service.name = "ai-support-assistant" && span.app_name.customer.plan = "enterprise" && duration > 5s }'
+                  limit: 20
+    # ---- Row 3: Logs - "What did it actually cost?" ----
+    # The dollar amounts here ($15 per ticket, $0.20 / $1.25 per million tokens) are copied
+    # from config/business.yml, because a dashboard can't read that file. Change both together.
+    slowTickets:
+      kind: Panel
+      spec:
+        display:
+          name: Cost of tickets opened because of a slow answer (USD)
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: LokiTimeSeriesQuery
+                spec:
+                  query: sum(count_over_time({service_name="ai-support-assistant"} | event_name="app_name.support.ticket_opened" | app_name_ticket_reason="slow_answer" [$__range])) * 15
+    wastedTokens:
+      kind: Panel
+      spec:
+        display:
+          name: Spend on answers nobody read (USD)
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: LokiTimeSeriesQuery
+                spec:
+                  query: sum(sum_over_time({service_name="ai-support-assistant"} | event_name="app_name.assistant.user_gave_up" | unwrap gen_ai_usage_input_tokens [$__range])) * 0.20 / 1000000 + sum(sum_over_time({service_name="ai-support-assistant"} | event_name="app_name.assistant.user_gave_up" | unwrap gen_ai_usage_output_tokens [$__range])) * 1.25 / 1000000
+    events:
+      kind: Panel
+      spec:
+        display:
+          name: Business events
+        plugin:
+          kind: LogsTable
+          spec: {}
+        queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{service_name="ai-support-assistant"}'
+  layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: "1. Metrics: how many answers were too slow?"
+        items:
+          - { x: 0, y: 0, width: 6, height: 6, content: { $ref: "#/spec/panels/tooSlowCount" } }
+          - { x: 6, y: 0, width: 12, height: 6, content: { $ref: "#/spec/panels/tooSlowRate" } }
+          - { x: 18, y: 0, width: 6, height: 6, content: { $ref: "#/spec/panels/tokenSpend" } }
+          - { x: 6, y: 6, width: 12, height: 7, content: { $ref: "#/spec/panels/answerDuration" } }
+    - kind: Grid
+      spec:
+        display:
+          title: "2. Traces: who was affected, and which step was slow?"
+        items:
+          - { x: 0, y: 0, width: 24, height: 8, content: { $ref: "#/spec/panels/traceScatter" } }
+          - { x: 0, y: 8, width: 24, height: 10, content: { $ref: "#/spec/panels/traces" } }
+          - { x: 0, y: 18, width: 24, height: 10, content: { $ref: "#/spec/panels/slowEnterpriseTraces" } }
+    - kind: Grid
+      spec:
+        display:
+          title: "3. Logs: what did it actually cost?"
+        items:
+          - { x: 0, y: 0, width: 8, height: 6, content: { $ref: "#/spec/panels/slowTickets" } }
+          - { x: 8, y: 0, width: 8, height: 6, content: { $ref: "#/spec/panels/wastedTokens" } }
+          - { x: 0, y: 6, width: 24, height: 10, content: { $ref: "#/spec/panels/events" } }

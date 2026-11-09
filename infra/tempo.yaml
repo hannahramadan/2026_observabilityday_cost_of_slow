@@ -1,0 +1,18 @@
+# Tempo in its simplest form: one process, traces kept on local disk.
+server:
+  http_listen_port: 3200            # query API (Perses and curl use this)
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317    # the Collector's otlp_grpc/tempo exporter connects here
+
+storage:
+  trace:
+    backend: local                  # plain files; fine for a demo, not for production
+    wal:
+      path: /var/tempo/wal          # write-ahead log: recent spans before they are flushed
+    local:
+      path: /var/tempo/blocks       # finished blocks of traces

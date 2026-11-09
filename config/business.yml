@@ -1,0 +1,10 @@
+# Everything the BUSINESS knows. All numbers are placeholders: replace with your own.
+shared:
+  too_slow_seconds: 5            # the point where customers start giving up
+  ticket_cost_usd: 15.0          # what one human-handled support ticket costs
+  ticket_rate_after_give_up: 0.30  # share of customers who give up and then open a ticket
+  ticket_rate_baseline: 0.03     # share of satisfied-looking customers who still open a ticket
+  slow_day_extra_seconds: 6      # delay added to the OpenAI request on a "slow day"
+  token_price_usd_per_million:   # placeholder prices, USD per million tokens
+    input: 0.20
+    output: 1.25
